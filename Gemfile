@@ -1,0 +1,9 @@
+source "https://rubygems.org"
+
+gem "jekyll"
+gem "jekyll-feed"
+gem "jekyll-seo-tag"
+gem "just-the-docs"
+gem "kramdown"
+gem "kramdown-parser-gfm"
+gem "webrick"
