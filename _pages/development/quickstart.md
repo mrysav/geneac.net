@@ -24,8 +24,4 @@ An alternative to having all of this done locally is to use [GitHub Codespaces](
 
 ## Updating the documentation
 
-The documentation is generated with [just-the-docs](https://just-the-docs.github.io/just-the-docs/). If you are using the devcontainer, these are installed automatically for you. You can start a development server with:
-
-```bash
-cd docs/ ; bundle exec jekyll serve
-```
+The documentation is generated with [just-the-docs](https://just-the-docs.github.io/just-the-docs/). It is in a separate repo, [mrysav/geneac.net](https://github.com/mrysav/geneac.net).

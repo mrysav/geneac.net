@@ -9,18 +9,10 @@ parent: User Guide
 If you just want to run Geneac locally for testing, you should be looking at [Developer Quickstart](development/quickstart) instead!
 
 {: .info }
-Geneac used to run easily on Heroku. It should _still_ run easily on Heroku, but I
-no longer run it there and can't guarantee that it will be easy.
+Geneac uses local file storage and a SQLite database. This makes it ideal for self-hosting, but means that it will not scale up to
+multiple host machines by default. If this is a usecase you have, you can reach out to me and we can discuss it further.
 
-## Cloud Infrastructure
-
-Geneac requires an S3 (or S3-compatible) bucket, and optionally, it can use SES for sending email.
-
-`script/geneac-aws.yml` is a CloudFormation template that you can use to create the required IAM User, Bucket,
-and policy associated with each to get going. **This will not reveal the credentials to you,** so to get those you
-will need to go into the AWS console and create new credentials for the user manually, and copy them down.
-
-## Docker
+## Installation with Docker
 
 Docker's not just for experts!
 
@@ -33,78 +25,81 @@ $ docker pull ghcr.io/mrysav/geneac:latest
 
 You can run the container as-is, but there are some environment variables you'll want to configure first.
 
-## Environment Variables
+### Environment Variables
 
-AWS configuration values:
+| Environment Variable | Suggested Value |
+| -------------------- | --------------- |
+| `REDIS_URL`          | URL to Redis container, eg. `redis://geneac-redis:6379` |
+| `RAILS_FORCE_SSL`    | If you are hosting behind a reverse proxy with HTTPS, set this to `1` |
+| `RAILS_ENV`          | `production` |
+| `RAILS_LOG_TO_STDOUT`| `true` |
+| `RAILS_SERVE_STATIC_FILES` | `true` |
+| `SECRET_KEY_BASE`    | Generate a new one with `bin/rake secret` or similar random generator |
 
-1. `AWS_ACCESS_KEY_ID`
-1. `AWS_REGION`
-1. `AWS_SECRET_ACCESS_KEY`
-1. `S3_BUCKET_NAME`
+### Docker Compose Example
 
-Infrastructure:
-
-1. `DATABASE_URL` - in the form of `postgres://[username]:[password]@[hostname]:[port]/[database_name]`
-1. `REDIS_URL` - in the form of `redis://[hostname]:[port]`
-
-Values that configure email sending:
-
-1. `MAILER_HOSTNAME` - This is the hostname that will be used in ActionMailer to generate links back your instance.
-1. `MAILER_SENDER` - This is the full email address that your AWS user is able to send mail via SES from, such as `no-reply@geneac.net`.
-
-App configuration values:
-
-1. `RACK_ENV`, `RAILS_ENV` - Both of these should probably be `production`.
-1. `RAILS_LOG_TO_STDOUT` - This should probably be set to `enabled` so you don't miss any logs.
-1. `RAILS_SERVE_STATIC_FILES` - This should be `enabled`.
-1. `SECRET_KEY_BASE` - You can generate this with `rake secret` if it is not already generated for you.
-
-## Example
-
-I use Docker Compose to manage my containers, so here is my setup:
+Here is an example `docker-compose.yml` file you can use to run Geneac. You can adjust the environment variables as needed.
 
 ```yaml
-version: '3'
-
-volumes:
-  pg_data:
-
 services:
-  postgres:
-    # The version of postgres used should match the version of the client in
-    # the Geneac container for the backup rake task to work.
-    # As of writing this is version 13.
-    image: postgres:13
-    environment:
-      # this can be anything you want. Make sure the file permissions are
-      # restrictive enough that the file can't be seen by anyone else though!
-      POSTGRES_PASSWORD: my-postgres-password-here
+  web:
+    image: ghcr.io/mrysav/geneac:latest
+    command: ./bin/thrust ./bin/rails server
+    restart: unless-stopped
     ports:
-      - '5432:5432'
+      - '3000:3000'
+    environment:
+      - RAILS_ENV=production
+      # Uncomment if needed
+      # - RAILS_FORCE_SSL=1
+      - RAILS_LOG_TO_STDOUT=true
+      - RAILS_SERVE_STATIC_FILES=true
+      - REDIS_URL=redis://geneac-redis:6379
+      # Make sure to generate your own!
+      - SECRET_KEY_BASE=
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - geneac-data:/rails/storage/
+
+  worker:
+    image: ghcr.io/mrysav/geneac:latest
+    command: ./bin/rake resque:work
+    restart: unless-stopped
+    environment:
+      - QUEUE=*
+      - RAILS_ENV=production
+      # - RAILS_FORCE_SSL=1
+      - RAILS_LOG_TO_STDOUT=true
+      - RAILS_SERVE_STATIC_FILES=true
+      - REDIS_URL=redis://redis:6379
+      # This should be the same one as above!
+      - SECRET_KEY_BASE=
+    volumes:
+      - geneac-data:/rails/storage/
 
   redis:
-    image: redis:latest
-    ports:
-      - ':6379'
+    image: docker.io/library/redis:8-alpine
+    command: redis-server --save 60 1 --loglevel warning
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli","ping"]
 
-  prod-web:
-    image: ghcr.io/mrysav/geneac:latest
-    command: ['sh', '/usr/bin/rails_web.sh']
-    ports:
-      - '3001:3001'
-    depends_on:
-      - postgres
-      - redis
-    # This file contains all my environment variables, as above
-    env_file: docker.prod.env
-
-  prod-worker:
-    image: ghcr.io/mrysav/geneac:latest
-    command: ['sh', '/usr/bin/rails_worker.sh']
-    depends_on:
-      - postgres
-      - redis
-    env_file: docker.prod.env
+volumes:
+  geneac-data:
 ```
+
+## Post-Installation
+
+When you start Geneac, you will be presented with the home page.
+
+![Homepage of Geneac](image.png)
+
+To get an administrator account, you must follow these steps:
+
+1. Register an account by clicking the "Sign in or register" link and filling out the "Sign up" form
+1. In your terminal window, you must grant administrator access to the account you just created:
+    ```bash
+    $ user@server:~$ docker compose run web bash
+    $ rails@32f8366bfb15:/rails$ bin/rails admin:grant[your-email-here@your-domain.com]
+    ```
+
+The account you just created will now have administrator permissions.
